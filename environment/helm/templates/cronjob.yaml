@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gcp-billing
+  namespace: sre
+spec:
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+            - name: gcp-billing-job
+              image: {{ .Values.image }}
+              env:
+              - name: GCP_PROJECT_ID
+                value: {{ .Values.gcp.projectId }}
+              - name: BIGQUERY_DATASET
+                value: {{ .Values.gcp.bigQueryDataset }}
+              - name: DATADOG_API_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: gcp-billing-datadog-api-key
+                    key: gcp-billing-datadog-api-key
+          restartPolicy: Never
+          serviceAccountName: gcp-billing
+          volumes:
+            - name: gcp-billing-datadog-api-key
+              secret:
+                secretName: gcp-billing-datadog-api-key
+                defaultMode: 420
+  schedule: '0 * * * *'
