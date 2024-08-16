@@ -1,23 +1,22 @@
 package main
 
 import (
+	"cloud.google.com/go/bigquery"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zorkian/go-datadog-api"
+	"google.golang.org/api/iterator"
 	"log"
 	"os"
 	"time"
-
-	"cloud.google.com/go/bigquery"
-	"github.com/zorkian/go-datadog-api"
-	"google.golang.org/api/iterator"
 )
 
 type BillingData struct {
 	Month       string
 	Description string
+	Id          bigquery.NullString
 	Total       float64
-	TotalExact  float64
 }
 
 func queryBigQuery(ctx context.Context, client *bigquery.Client, projectID, dataset string) ([]BillingData, error) {
@@ -25,23 +24,18 @@ func queryBigQuery(ctx context.Context, client *bigquery.Client, projectID, data
 SELECT
   invoice.month,
   service.description,
+  project.id,
   SUM(cost) + SUM(IFNULL((
     SELECT
      SUM(credit.amount)
    FROM
      UNNEST(credits) AS credit
-  ), 0)) AS total,
-  SUM(CAST(cost AS BIGNUMERIC)) + SUM(IFNULL((
-    SELECT
-     SUM(CAST(credit.amount AS BIGNUMERIC))
-   FROM
-     UNNEST(credits) AS credit
-  ), 0)) AS total_exact
+  ), 0)) AS total
 FROM
   %s.billing.%s
 WHERE invoice.month LIKE FORMAT_TIMESTAMP('%%Y%%m', CURRENT_TIMESTAMP())
-GROUP BY 1, 2
-ORDER BY 1 ASC, 2 ASC;
+GROUP BY 1, 2, 3
+ORDER BY 2 ASC, 3 ASC;
 `, projectID, dataset)
 
 	it, err := client.Query(query).Read(ctx)
@@ -74,6 +68,8 @@ func sendToDatadog(data []BillingData) error {
 	client := datadog.NewClient(apiKey, "")
 
 	for _, d := range data {
+		// for debugging
+		// fmt.Printf("BillingData: %+v\n", d)
 		metric := datadog.Metric{
 			Metric: stringPtr("gcp.billing.total"),
 			Points: []datadog.DataPoint{
@@ -82,6 +78,7 @@ func sendToDatadog(data []BillingData) error {
 			Tags: []string{
 				fmt.Sprintf("month:%s", d.Month),
 				fmt.Sprintf("description:%s", d.Description),
+				fmt.Sprintf("project:%s", d.Id),
 			},
 		}
 		err := client.PostMetrics([]datadog.Metric{metric})

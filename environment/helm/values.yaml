@@ -1,5 +1,5 @@
 gcp:
   projectId: "projectId"
   bigQueryDataset: "gcp_billing_export_v1_XXXXXX_XXXXXX_XXXXXX"
-image: "gcp_billing:v1.1.3"
-clusterSecretStore: "clusterSecretStoreNam"
+image: "gcp_billing:v1.1.4"
+clusterSecretStore: "clusterSecretStoreName"
